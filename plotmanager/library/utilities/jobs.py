@@ -1,6 +1,5 @@
 import logging
 import psutil
-import os.path
 
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -11,6 +10,8 @@ from plotmanager.library.utilities.processes import identify_drive, is_windows, 
 from plotmanager.library.utilities.objects import Job, Work
 from plotmanager.library.utilities.log import get_log_file_name
 
+# Disk usage checks failing to stop full drives, add 200 MB to the minimum space calculations
+EXTRA_HDD_SPACE = 200000000
 
 def has_active_jobs_and_work(jobs):
     for job in jobs:
@@ -51,15 +52,9 @@ def check_valid_destinations(job, drives_free_space):
 
     valid_destinations = []
     for directory in destination_directories:
-        if not os.path.isdir(directory):
-            logging.error(f'Directory does not exist, not a valid destination: {directory}')
-            continue
         drive = identify_drive(file_path=directory, drives=drives)
-        if drive is None:
-            logging.error(f'Unable to identify drive from file_path: {directory}, drive: {drives}, skipping')
-            continue
         logging.info(f'Drive "{drive}" has {drives_free_space[drive]} free space.')
-        if drives_free_space[drive] is None or drives_free_space[drive] >= job_size:
+        if drives_free_space[drive] is None or drives_free_space[drive] >= job_size + EXTRA_HDD_SPACE:
             valid_destinations.append(directory)
             continue
         logging.error(f'Drive "{drive}" does not have enough space. This directory will be skipped.')
@@ -173,11 +168,8 @@ def monitor_jobs_to_start(jobs, running_work, max_concurrent, max_for_phase_1, n
         if isinstance(job.destination_directory, list):
             directories = job.destination_directory
         for directory in directories:
-            if not os.path.isdir( directory ):
-                logging.warn(f"Skipping non-existent directory for job: {directory}")
-                continue
             drive = identify_drive(file_path=directory, drives=system_drives)
-            if drive in drives_free_space:
+            if drive is None or drive in drives_free_space:
                 continue
             try:
                 free_space = psutil.disk_usage(drive).free
